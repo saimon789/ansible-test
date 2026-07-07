@@ -1,0 +1,52 @@
+dependency:
+  name: galaxy
+driver:
+  name: docker
+lint: "ansible-lint ."
+platforms:
+  - name: ubuntu-2404
+    image: golovanovsv/ubuntu:24.04-systemd
+    command: /lib/systemd/systemd
+    pre_build_image: true
+    privileged: true
+    volumes:
+      - /lib/modules:/lib/modules:ro
+  - name: ubuntu-2204
+    image: golovanovsv/ubuntu:22.04-systemd
+    command: /lib/systemd/systemd
+    pre_build_image: true
+    privileged: true
+    volumes:
+      - /lib/modules:/lib/modules:ro
+  - name: ubuntu-2004
+    image: golovanovsv/ubuntu:20.04-systemd
+    command: /lib/systemd/systemd
+    pre_build_image: true
+    privileged: true
+    volumes:
+      - /lib/modules:/lib/modules:ro
+  - name: ubuntu-1804
+    image: golovanovsv/ubuntu:18.04-systemd
+    command: /lib/systemd/systemd
+    pre_build_image: true
+    privileged: true
+    volumes:
+      - /lib/modules:/lib/modules:ro
+provisioner:
+  name: ansible
+  log: true
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."
+  inventory:
+    group_vars:
+      all:
+        # Внутренний Nexus (nexus.internal) недоступен вне прод-окружения, поэтому
+        # тесты используют публичный NVIDIA-репозиторий (nvidia_repo/nvidia_repo_key
+        # из defaults/main.yml).
+        nexus_repo_enabled: false
+  config_options:
+    defaults:
+      interpreter_python: "python3"
+verifier:
+  name: testinfra
+  directory: ../../tests

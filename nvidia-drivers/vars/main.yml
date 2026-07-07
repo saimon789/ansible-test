@@ -1,0 +1,3 @@
+linux_modules:
+  generic: "linux-modules-nvidia-{{ nvidia_driver_version }}-generic"
+  oem: "linux-modules-nvidia-{{ nvidia_driver_version }}-oem-{{ ansible_facts['distribution_version'] }}"

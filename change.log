@@ -1,0 +1,60 @@
+# Change Log
+
+## 2026-07-07 (3) — deprecated facts + tests/ для molecule verifier
+
+### Fixed
+
+- `nvidia-drivers/defaults/main.yml`, `nvidia-drivers/vars/main.yml`, `nvidia-drivers/tasks/main.yml` — заменены все использования старых top-level fact-переменных (`ansible_distribution`, `ansible_distribution_version`, `ansible_kernel`) на `ansible_facts['distribution']`/`ansible_facts['distribution_version']`/`ansible_facts['kernel']`. Причина: `INJECT_FACTS_AS_VARS` (доступ к фактам без префикса `ansible_facts[...]`) уже deprecated в установленном `ansible-core` 2.21 и будет полностью убран в 2.24 — без фикса `nvidia_repo`/`nvidia_repo_key`/`linux_modules.oem` перестали бы вычисляться в будущих версиях Ansible. Проверено прогоном на чистом Docker-контейнере — deprecation warning больше не появляется, поведение не изменилось.
+
+- `nvidia-drivers/tests/test_default.py` (новый файл) — добавлены testinfra-тесты для verifier'а molecule (`nvidia-drivers/molecule/default/molecule.yml` уже ссылался на `../../tests`, но директории не было — verify-шаг был обречён на ошибку/no-op). Тесты: установлен пакет `nvidia-driver-{{ nvidia_driver_version }}`; создан blacklist unattended-upgrades (`/etc/apt/apt.conf.d/10nvidia-unattented`); таймеры `apt-daily(-upgrade).timer` запущены; при `nvidia_container_toolkit_install: true` — есть бинарь `nvidia-ctk` и файл `nvidia_ctk_containerd_config_path`; модуль `nouveau` не загружен. Проверено вручную на Docker-контейнере (сверка с реальным состоянием файловой системы после прогона), тесты соответствуют фактическому поведению роли.
+
+### Known issues (обнаружено при подготовке тестов, не исправлено)
+
+- Таски `Nvidia | Re-enable apt daily timers after provisioning` и `Nvidia | Re-enable unattended-upgrades` (`tasks/main.yml`, в самом конце) стоят ПОСЛЕ финального `fail`-таска `Nvidia | Fail when module not started`. Если модуль `nvidia` не загрузился (гарантированно происходит в любом Docker/CI-контейнере без реального GPU, и может случиться на реальном хосте при сбое), плейбук падает раньше и timers/unattended-upgrades остаются выключенными навсегда — нет `always:`/handlers, гарантирующих откат. Из-за этого verify-тест на таймеры (`test_apt_daily_timers_reenabled_after_provisioning`) будет актуален только при полностью успешной конвергенции (реальный GPU-хост); в molecule он никогда не выполнится, т.к. `verify` не запускается, если `converge` упал раньше.
+
+## 2026-07-07 (2) — прогон common.yml целиком + molecule
+
+### Fixed
+
+- `common.yml` протестирован целиком (`--tags nvidia --limit gpu_nodes`, как в реальной команде пользователя) через временные заглушки ролей `containerd`/`kubernetes` (вне репозитория, через `ANSIBLE_ROLES_PATH`, репозиторий не менялся). Тег/лимит корректно отфильтровали заглушки — реально выполнялась только `nvidia-drivers`; результат идентичен прогону через `test-nvidia.yml`: полная установка `nvidia-driver-580-server`, останов только на ожидаемом финальном `modprobe nvidia` (нет GPU) либо на недоступности внутреннего Nexus (сетевое ограничение песочницы). Подтверждает, что все более ранние фиксы работают и в контексте полного плейбука, а не только изолированной роли.
+
+- `nvidia-drivers/molecule/default/molecule.yml` — добавлены `volumes: ["/lib/modules:/lib/modules:ro"]` для всех 4 платформ. Причина: без этого монтирования таск `Nvidia | disable nouveau module` (`modprobe`) падает сразу же с `[Errno 2] No such file or directory: '/lib/modules/<kernel>/modules.builtin'` — молекула никогда не давала контейнеру доступ к модулям ядра хоста.
+
+- `nvidia-drivers/molecule/default/molecule.yml` — добавлен `provisioner.env.ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."`. Причина: без этого `molecule test`/`molecule syntax` не находили саму роль `nvidia-drivers` (искали только внутри `molecule/default/` и системные пути) и падали на самом первом шаге (`syntax`) с "role 'nvidia-drivers' was not found" — тесты были неработоспособны "из коробки" в чистом окружении.
+
+- `nvidia-drivers/molecule/default/molecule.yml` — добавлен `provisioner.inventory.group_vars.all.nexus_repo_enabled: false`. Причина: дефолтный `nexus_repo_url` в `defaults/main.yml` — заглушка `http://nexus.internal/...` (несуществующий домен), а `nexus_repo_enabled: true` по умолчанию; `converge.yml` не переопределяет переменные, поэтому `molecule converge`/`test` гарантированно падал на `apt-get update` для этого хоста у ЛЮБОГО, кто их запускал. Теперь тесты используют публичный NVIDIA-репозиторий (`nvidia_repo`/`nvidia_repo_key` из defaults).
+
+### Known issues (найдено при прогоне molecule, не исправлено)
+
+- Платформа `ubuntu-1804` (`golovanovsv/ubuntu:18.04-systemd`) в тестовой матрице не смогла подняться под systemd в Docker на текущем хосте (ядро 6.8) — создание контейнера зависало и падало по таймауту Docker API (`Read timed out`), что валило весь `molecule test` ещё на шаге `create` для всех 4 платформ разом. Не исправлено — возможно, специфично для этого хоста/ядра, а не универсальная проблема; либо саму платформу пора убрать из матрицы (Ubuntu 18.04 давно EOL, и `nvidia-driver-580-server` для неё в любом случае недоступен).
+
+- Дефолты роли (`nvidia_driver_version: "530"`, `nvidia_dkms_install: false`) несовместимы с самой новой платформой в тестовой матрице: на `ubuntu-2404` (noble) таск `Nvidia | Install linux-modules` падает с "No package matching 'linux-modules-nvidia-530-generic' is available" — Canonical не публикует этот пакет для noble (связка версии драйвера и релиза Ubuntu устарела). Не исправлено — требует решения, какую версию/связку считать актуальной дефолтной для тестов.
+
+- Догнал прогон `molecule test` по оставшимся платформам (`ubuntu-2204`, `ubuntu-2004`, `ubuntu-1804` уже задокументирована выше отдельно) — результат подтверждает и расширяет предыдущую находку:
+  - `ubuntu-2204` (jammy): падает на том же таске `Nvidia | Install linux-modules`, но иначе и серьёзнее — `apt-get install linux-modules-nvidia-530-generic=5.15.0-185.195` инициирует конфликтную транзакцию: apt уже заменил обсолетный `nvidia-driver-530` на актуальный `nvidia-driver-560`/`nvidia-dkms-560` на предыдущем таске (пакета 530 в архивах jammy для install уже нет, apt подставил 560 через виртуальный пакет), а таск `linux-modules` жёстко пинует "530" и тянет за собой НОВОЕ ядро (`linux-image-5.15.0-185-generic`) — итог: apt пытается одновременно удалить только что поставленные 560-пакеты и поставить конфликтующие, `dpkg` возвращает ошибку (`rc=100`, `E: Sub-process /usr/bin/dpkg returned an error code (1)`). Не исправлено — тот же корень (устаревшая версия 530 в дефолтах), но здесь баг ещё и оставляет хост в частично сломанном состоянии пакетов, а не просто аккуратно падает.
+  - `ubuntu-2004` (focal): падает ещё раньше, на `Gathering Facts` — "Ansible requires Python 3.9 or newer on the target. Current version: 3.8.10". Это несовместимость версии control-node `ansible-core` (2.21.1, используется в тестовом окружении) с системным Python 3.8 в focal, а не баг роли — но `meta/main.yml` роли заявляет поддержку `focal`/`bionic`, и с современным `ansible-core` эти платформы неработоспособны без явного указания более старого интерпретатора Python на таргете.
+  - Во время `destroy` для `ubuntu-2004` разово словили инфраструктурный глюк Docker-демона (`500 Server Error ... tried to kill container, but did not receive an exit event`) — не баг роли/molecule, разовая нестабильность песочницы; контейнер вычищен вручную (`docker rm -f`).
+
+- `nvidia-drivers/molecule/default/molecule.yml` verifier указывает на `../../tests` (testinfra), а такой директории в репозитории нет — до этого шага прогон не доходил (падал раньше на converge), но при исправлении вышеперечисленного verify-шаг тоже не будет работать без создания этой директории с тестами.
+
+## 2026-07-07
+
+### Fixed
+
+- `test-ntech-dev.yml:51` — незакрытая кавычка в `nvidia_container_toolkit_repo_url` ломала YAML-парсинг всего инвентаря (`ansible-inventory --list` падал, `nvidia_container_toolkit_signed_by` склеивался с предыдущим значением). Кавычка закрыта.
+
+- `nvidia-drivers/tasks/main.yml` — таск `Nvidia | Add repositories keys | Add repository` (репозиторий `nvidia_repo`, официальный CUDA-репозиторий NVIDIA): убран `suites: "{{ ansible_facts['distribution_release'] }}"`, заменён на `suites: "/"` без `components`. Причина: `developer.download.nvidia.com/.../cuda/repos/...` — flat-репозиторий, а не per-distro-suite; со старой конфигурацией `apt-get update` падал с "does not have a Release file".
+
+- `nvidia-drivers/tasks/main.yml` — таск `Nvidia Container Toolkit | Add apt repository with key` (репозиторий `nvidia_container_toolkit_repo_url`): убраны `suites: "{{ ansible_facts['distribution_release'] }}"` и `components: [stable]`, заменены на `suites: "/"` без `components`. Причина: `nvidia.github.io/libnvidia-container/...` — тоже flat-репозиторий; со старой конфигурацией apt считал sources-файл некорректным ("Malformed entry ... (Component)") и `apt-get update` падал целиком, блокируя установку драйвера.
+
+- `nvidia-drivers/tasks/main.yml` — таск `Ensure python3-debian is present`: добавлены `update_cache: true` и `cache_valid_time: 3600`; таск перемещён на позицию сразу после `disable nouveau module`, т.е. перед всеми `deb822_repository`-тасками (Nexus/nvidia_repo/container-toolkit); условие `when:` расширено с `(nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)` до `nexus_repo_enabled or (...) or nvidia_container_toolkit_install`. Причина: `deb822_repository` требует `python3-debian` для ЛЮБОГО из трёх репозиториев (Nexus/nvidia_repo/container-toolkit), а старое условие проверяло только сценарий nvidia_repo — при проде (`nexus_repo_enabled: true`, `nvidia_repo`/`nvidia_repo_key` пустые) таск никогда не выполнялся, и самый первый `deb822_repository`-таск (Nexus) падал на полностью свежем хосте с "python3-debian is not installed, and install_python_debian is False". Проверено на полностью чистом Docker-контейнере (без apt-кэша и без python3-debian) — прогон теперь доходит до реальной установки `nvidia-driver-580-server` и останавливается только на ожидаемом финальном `modprobe nvidia` (нет реального GPU).
+
+### Added
+
+- `test-nvidia.yml` — тестовый плейбук, воспроизводящий кусок `common.yml` с ролью `nvidia-drivers` (`tags: [drivers, nvidia]`, `when: gpu_present | default(false)`) без ссылок на отсутствующие в репозитории роли `containerd`/`kubernetes`. Используется для локального Docker-тестирования роли отдельно от полного `common.yml`.
+
+- `test-ntech-dev.docker.yml` — тестовый inventory для группы `gpu_nodes`, копия vars из `test-ntech-dev.yml` с хостом, указывающим на Docker-контейнер (`ansible_connection: docker`) вместо реального `vm-test2`. Прод-инвентарь не используется/не изменяется этим файлом.
+
+### Known issues (not fixed, требуют решения)
+
+- `common.yml` ссылается на роли `containerd` и `kubernetes`, отсутствующие в репозитории — `ansible-playbook common.yml` не запустится, пока эти роли не появятся (используйте `test-nvidia.yml` для тестирования только nvidia-drivers).

@@ -1,0 +1,124 @@
+all:
+  children:
+    k8s:
+      children:
+        masters:
+          hosts:
+            master-0:
+              ansible_host: 172.17.147.20
+            master-1:
+              ansible_host: 172.17.147.21
+            master-2:
+              ansible_host: 172.17.147.22
+        ingress:
+          hosts:
+            ingress-0:
+              ansible_host: 172.17.147.23
+            ingress-1:
+              ansible_host: 172.17.147.24
+        cpu_nodes:
+          hosts:
+            node-cpu-00:
+              ansible_host: 172.17.147.34
+            node-cpu-01:
+              ansible_host: 172.17.147.35
+            node-cpu-02:
+              ansible_host: 172.17.147.33
+          vars:
+            k8s_version: "1.27.13"
+        gpu_nodes:
+          hosts:
+            vm-test2:
+              ansible_host: 172.17.47.221
+          vars:
+            gpu_present: true
+            nvidia_driver_version: "580-server"
+            nvidia_driver_specific_version: ""
+            ## Внутренний Nexus-репозиторий с драйверами (основной источник пакетов)
+            # Включён по умолчанию, чтобы сохранить прежнее поведение роли; отключите,
+            # если для конкретного окружения/хоста этот репозиторий не нужен или недоступен.
+            nexus_repo_enabled: true
+            # Полный URL apt-репозитория в Nexus. Переопределите в group_vars/host_vars
+            # под конкретное окружение (dev/stage/prod), не редактируя tasks/main.yml.
+            nexus_repo_url: "http://172.17.47.165:8081/repository/nvidia-drivers-580/"
+            # Публичный GPG-ключ репозитория (armored). Переопределяется так же, как и URL -
+            # без правки кода роли, что упрощает ротацию ключа.
+            nexus_repo_signed_by: "http://172.17.47.165:8081/repository/apt-releases/apt-keys/nexus-repo.gpg"
+
+            ## Блок для установки NVIDIA Container Toolkit (доступ к GPU из контейнеров, например Kubernetes)
+            nvidia_container_toolkit_install: true
+            # URL для репозитория где находится nvidia-container-toolkit
+            nvidia_container_toolkit_repo_url: "https://nvidia.github.io/libnvidia-container/stable/deb/amd64"
+            # Публичный GPG-ключ репозитория для nvidia-container-toolkit
+            nvidia_container_toolkit_signed_by: "https://nvidia.github.io/libnvidia-container/gpgkey"
+
+            cuda_install: false
+            # В образе ubuntu-22.04 в OS используется ядро 5.17-oem
+            # Он упорно ставит модуль ядра для nvidia версии 535. Поэтому приходится ставить через DKMS
+            nvidia_dkms_install: true
+            containerd_nvidia_runtime: true
+            nvidia_repo: "" #https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64
+            nvidia_repo_key: ""
+# -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+# mQINBGpLq8kBEADS0PCz9hRYbKlBRnM50C9YGu4aMgBDwEg9iG3Yxv2ma89z02ZZ
+# 8UmSWgFx2l7nLEEuFxOK2w4QFC9WjUJQp65cYmRes8y+qEYzUEg5D94kbsnYIVw4
+# nQvmqNJqN2i0v9brYPlERdZJYmfed4pPKT4gE80O447yfrAmIw98BIdH9CzzvTw4
+# 8fofbeRbNpUwDIUn2oRrF4GYii60UmSQUhyKZ85f8Hpd2mNHh1M2A8o5Rz8TAqcM
+# GxgWUoT/pem35OCAzXCdNbAUYRUCDG0k7ga6AtwKvt6JclLHsgc2XVq357fdaFHZ
+# VPDF3T0r8VSXb+lUjZ3OH7wvLAAvGdvUL3lL24cOvU5uCZM1Z3gMRDVm427YCp93
+# JX6yMpq1L/aR/50WRnDVo/mW6vVv55Wu2qKKgZhA7VAucqbLR2hPK3UPbPyBFjHa
+# Xdq9jWcfLaltGDLO7nCw3YU1miYWSPJDfGMetez96VWldPfhP23whgDat7WAQnpG
+# 30bUx0Yww49cJqsxa1R0qFwx3e7JvD/XTM5U22NH/wjDTlgaziv0N1GxbeDssaFS
+# WtUxxwULnf9w4krvJf1hZaG2EtNUgPCIzHLj2GRnh2m8k+F2Uy0KheIRBSrhGQBR
+# V4fpQdrnNsF0ExQpeur/3HHqExBP+U3Z4+btZyy0cKOsH/nUJFY3URytIwARAQAB
+# tBxudGVjaGxhYiA8aGVscEBudGVjaGxhYi5jb20+iQJOBBMBCgA4FiEEdqcR17td
+# OxjgYXf2f0KJ9XzdcRQFAmpLq8kCGwMFCwkIBwIGFQoJCAsCBBYCAwECHgECF4AA
+# CgkQf0KJ9XzdcRR7Qw/5Abxh+uDhQZL+/MebkyccEXs1DLZrG3lqkQtSSnebV6BB
+# p7m+uIn94nx8LcvBqyGaG6gnjhQZUeBL5xNaMnNV0B3tFYABwPKCfRVEiYqLAKkW
+# Ff5/NDGM4nwUL5u7/zfgf7mRs6Q8Subq2/Pkh0NiPdjHinN7qT8B2EOmVwOrsNfz
+# KKiRcEVQi+/EVDr7U1YoAtCb0cqBxTdB8qYyLr4w11/qiv+W9NzGaFPzwWrH5Okz
+# Fxb8Jvpfqc2atoWBt7ywHNUaFa3aZ+L+ORLFo4AWDeff95XJRJuGjeB0S0KbiiUs
+# 0B3Wh+DsqW9tdATHMfedNjS/Fli65PiU+qxY/U1R+sUk8LiUdvOksHA1pSJmXTSl
+# RgTDud0KGNzBNoqP3HQrrhH1YnhCSJ70HaGNWc3+I4oa5MTCZY2FoPRO6e5int8p
+# Ztc+nGL2nKLkGvpz9QHx3mMq8P9Zv/8V/fLt7Aud75drSR3J1xKgVnGnC3n+sDz4
+# yUzEZAZyUM6D3X7oZo2cABm0+l2I/ElV7s2pt0bin867eBO7E7lLLcwgFp4OJYSM
+# Nc+RowW159y3Z/jlcqRhwH1tKojvmOiv6rF/1lAMFwQ2mEloKw8Npr/OSEmeZrbe
+# 8abRZ2dqh05NnMhlfVqFLl6LArsYMRsT2ortyt3lWvWtN1xs/uhGROMJwZRd9ES5
+# Ag0EakuryQEQAKHjj8n222/AUewXoZKEwEOnuN4+VvnIZNYgnJTIkleOm9kXt3ky
+# f/BIf48U7GZS4j4Wt2ybyc4AOM4sO9/8hKFem5e27+GKBP2zhg1s1Vir5enitDKq
+# fmmW//OTY82CqnlOS+wyQSgxuJaJ5SddcOIM6vA1+wCvO/NBdpngjuZQ1ExzWKqI
+# BXNJHVFiwZ+UOd/Kv5DJQIr4DzIaw/1POTaQl54d0yONNOXwNOVQlbOS5P/IVdXj
+# xO4gHrlSym749vkGnPTh8LvOFsitwvw11nXrrdq7i+e0bDqeUlC9GiA3UbCMw79h
+# 6O8Yn3OBBDpqmXqU+4//qA2kUX9IroEuoBG9ziv0n9x7nZITm67My0CAZKxHdABa
+# n/ep0dQLhAxPdhKTuCGZjXT7+Z8zNSokAHDhlc0txY/5ycwMmBQOqlFiCxVakXz4
+# AXlODSJtulYJZGe2/kkzuW3JM/dBDXn5U22cjyb48j/6PBy9GZCjR82lQwOrg3Nq
+# ol12Os4ptMesvv/0U52v9iETgsBd0IRIGbo0py49NktycnJ1gpmJWSQ3X7AWBohn
+# DO9yzh4liIcXRQMTDL9497++DF7zMBs0fuOgZexw4UpIATEUgtWE+HwTOmrrAh50
+# RjJswpU665mrQityWi6fDD+3r4eklR8Awb9ZH3+MuGO5Ml2kO9dSQr4vABEBAAGJ
+# AjYEGAEKACAWIQR2pxHXu107GOBhd/Z/Qon1fN1xFAUCakuryQIbDAAKCRB/Qon1
+# fN1xFMXAEACGdab89P0j2KVzGmE95MISUc4NZSGbeqvmWvIAYLXB3d9rVsjH/sio
+# TIKHKacjAxuh4F6PvDziWJsKvm8paaoXqga5HGvVoefXs/DyNyEOcy1PKwYQSdJH
+# MLHZ/8BziOqPeU4oBIj3REOhxHooMSbJiVlY+aB4ixj9OGu+I2FtvcvoqAvRiA9q
+# jsRO5zj74USiUsRGU4Ti2JaSCMfkjg+wkSHrxqQMNEFMsntna2C3TwKvK6C+9PmX
+# KoyiAKf6dR2YBKMDyK6sZi9EVUScEEdtcjZp/fp9UwJ/+79KYHBei7dhu0SLC8p/
+# fjpuxK2SYSOrJghoiVgiq+Pp/4P4XJfeZKT7DIZmQJpjN5095xRc7dIRQ3fqPaHt
+# XirgJHnvlA2ox5nsU1C4HDzlf3T3Rz/pot7jAYTOuk/lDFI5sKVkt5w12UOQPDdA
+# VghJPaT+dBmRL3DsqVEBIr+eoQwXijKT+01PvgpSEDpM3+dl6whpEPfUYIXmvtTS
+# lpy1bNLNCG4x7gcmfmkosr/t0zeIgadt40rwNXYhF6CXXHXNoWqdPsyWPhUpjTje
+# aR/zLBc5LrWiCkQ7tQvY5mn3zJTyaSDdGKJq+M/ovs3WbEkR87/dBaYs33A2sxGr
+# ibmEzmpU2vEfuBF4W2RvuhS6ciAsoYKpKY8riPBnhpzP9VWHagM/4w==
+# =uUkI
+# -----END PGP PUBLIC KEY BLOCK-----"
+
+  vars:
+    containerd_insecure_repos:
+      - harbor.int.ntl
+      - docker.int.ntl
+    k8s_masters_group: "masters"
+    k8s_apiserver: "172.17.147.10:6443"
+    k8s_domain_name: "ntech.dev"
+    k8s_service_subnet: "10.250.0.0/17"
+    k8s_pod_subnet: "10.250.128.0/17"
+    k8s_cluster_name: "ntech-dev"
+    k8s_kubevip_enabled: true

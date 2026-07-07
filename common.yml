@@ -1,0 +1,19 @@
+- hosts: all
+  gather_facts: true
+  become: true
+  roles:
+    - role: nvidia-drivers
+      when: gpu_present | default(false)
+      tags:
+        - drivers
+        - nvidia
+  
+    - role: containerd
+      tags:
+        - containerd
+        - cri
+
+    - role: kubernetes
+      tags:
+        - kubernetes
+        - k8s

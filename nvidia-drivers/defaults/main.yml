@@ -1,0 +1,42 @@
+## Версия пакета nvidia-driver
+# Версия драйвера nvidia nvidia-driver-{{ nvidia_driver_version }}
+nvidia_driver_version: "530"
+# Полная версия драйвера nvidia-driver-{{ nvidia_driver_version }}={{ nvidia_driver_specific_version }}
+nvidia_driver_specific_version: ""
+# Устанавливать модуль ядра через DKMS.
+# Это требует зависимостей gcc и linux-headers
+nvidia_dkms_install: false
+
+## Внутренний Nexus-репозиторий с драйверами (основной источник пакетов)
+# Включён по умолчанию, чтобы сохранить прежнее поведение роли; отключите,
+# если для конкретного окружения/хоста этот репозиторий не нужен или недоступен
+nexus_repo_enabled: true
+# Полный URL apt-репозитория в Nexus
+nexus_repo_url: "http://nexus.internal/repository/nvidia-drivers-580/"
+# Публичный GPG-ключ репозитория (armored)
+nexus_repo_signed_by: "http://nexus.internal/repository/nvidia-drivers-580/"
+
+## Блок для установки cuda
+cuda_install: false
+# Версия пакета cuda
+cuda_version: ""
+# cuda_version: "11-5"
+
+## Блок для установки NVIDIA Container Toolkit (доступ к GPU из контейнеров, например Kubernetes)
+nvidia_container_toolkit_install: false
+# URL для репозитория где находится nvidia-container-toolkit
+nvidia_container_toolkit_repo_url: "https://nvidia.github.io/libnvidia-container/stable/deb/amd64"
+# Публичный GPG-ключ репозитория для nvidia-container-toolkit
+nvidia_container_toolkit_signed_by: "https://nvidia.github.io/libnvidia-container/gpgkey"
+# Версия пакета nvidia-container-toolkit, если пусто - ставится последняя доступная
+nvidia_container_toolkit_version: ""
+# Путь до drop-in конфига, который создаёт `nvidia-ctk runtime configure --runtime=containerd`
+# Используется, чтобы по чек-сумме файла до/после определить, реально ли поменялся конфиг
+nvidia_ctk_containerd_config_path: "/etc/containerd/conf.d/99-nvidia.toml"
+
+# Репозитории драйверов nvidia
+# yamllint disable rule:line-length
+nvidia_repo: >
+  https://developer.download.nvidia.com/compute/cuda/repos/{{ ansible_facts['distribution'] | lower }}{{ ansible_facts['distribution_version'] | replace('.', '') }}/x86_64
+nvidia_repo_key: >
+  https://developer.download.nvidia.com/compute/cuda/repos/{{ ansible_facts['distribution'] | lower }}{{ ansible_facts['distribution_version'] | replace('.', '') }}/x86_64/3bf863cc.pub

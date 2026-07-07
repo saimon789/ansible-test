@@ -1,0 +1,179 @@
+- name: "Nvidia | disable nouveau module"
+  modprobe:
+    name: "nouveau"
+    state: "absent"
+    persistent: "absent"
+
+- name: "Nvidia | Ensure python3-debian is present (required by deb822_repository)"
+  apt:
+    name: python3-debian
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: >-
+    nexus_repo_enabled or
+    ((nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)) or
+    nvidia_container_toolkit_install
+
+- name: "Nexus | Add repositories keys | Add repository"
+  deb822_repository:
+    name: "nexus-repo-{{ ansible_facts['distribution_release'] }}"
+    types: deb
+    uris: "{{ nexus_repo_url | trim }}"
+    state: present
+    mode: "0644"
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components:
+      - main
+    signed_by: "{{ nvidia_container_toolkit_signed_by | trim }}"
+  when: nexus_repo_enabled
+
+- name: "Nvidia | Add repositories keys | Add repository"
+  deb822_repository:
+    name: "nvidia-repository"
+    types: deb
+    uris: "{{ nvidia_repo | trim }}"
+    suites: "/"
+    signed_by: "{{ nvidia_repo_key | trim }}"
+    state: "present"
+    mode: "0644"
+  when: (nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)
+
+- name: "Nvidia | Change nvidia repository priority"
+  copy:
+    content: |
+      Package: *
+      Pin: release l=NVIDIA CUDA
+      Pin-Priority: 700
+    dest: "/etc/apt/preferences.d/10nvidia"
+    mode: "644"
+    owner: "root"
+    group: "root"
+  when: nvidia_repo | trim | length > 0
+
+- name: "Nvidia Container Toolkit | Add apt repository with key"
+  deb822_repository:
+    name: "nvidia-container-toolkit"
+    types: deb
+    uris: "{{ nvidia_container_toolkit_repo_url | trim }}"
+    suites: "/"
+    signed_by: "{{ nvidia_container_toolkit_signed_by | trim }}"
+    state: "present"
+    mode: "0644"
+  when: nvidia_container_toolkit_install
+  register: nvidia_ctk_repo
+
+- name: "Nvidia | Blacklist unattented upgrade"
+  copy:
+    content: |
+      Unattended-Upgrade::Package-Blacklist {
+              "nvidia-";
+              "libnvidia-";
+      }
+    dest: "/etc/apt/apt.conf.d/10nvidia-unattented"
+    mode: "644"
+    owner: "root"
+    group: "root"
+
+- name: "Nvidia | Stop unattended-upgrades to avoid dpkg lock conflicts"
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    state: stopped
+  ignore_errors: true
+
+- name: "Nvidia | Disable apt daily timers during provisioning"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  ignore_errors: true
+
+- name: "Nvidia | Update apt cache"
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: "Nvidia | Install nvidia drivers"
+  apt:
+    name: "{{ item }}"
+    state: "present"
+    install_recommends: false
+    update_cache: true
+    allow_downgrade: true
+    lock_timeout: 120
+  loop:
+    - "nvidia-driver-{{ nvidia_driver_version }}
+      {{- '='+nvidia_driver_specific_version if nvidia_driver_specific_version | length > 0 }}"
+
+- name: "Nvidia | Install linux-modules"
+  apt:
+    name: "{{ linux_modules['oem'] if (ansible_facts['kernel'] | split('-') | last == 'oem') else linux_modules['generic'] }}"
+    state: "present"
+    install_recommends: false
+    allow_downgrade: true
+  when: not nvidia_dkms_install
+
+- name: "Nvidia | Install nvidia dkms"
+  apt:
+    name: "nvidia-dkms-{{ nvidia_driver_version }}"
+    state: "present"
+    install_recommends: false
+    allow_downgrade: true
+  when: nvidia_dkms_install
+
+- name: "Nvidia Container Toolkit | Install package"
+  apt:
+    name: >-
+      nvidia-container-toolkit{{ '=' + nvidia_container_toolkit_version
+      if nvidia_container_toolkit_version | length > 0 else '' }}
+    state: "present"
+    install_recommends: false
+    lock_timeout: 120
+  when: nvidia_container_toolkit_install
+
+- name: "Nvidia Container Toolkit | Configure containerd runtime"
+  command:
+    cmd: "nvidia-ctk runtime configure --runtime=containerd"
+  register: nvidia_ctk_configure
+  changed_when: "'Wrote updated config' in nvidia_ctk_configure.stdout or 'up to date' not in nvidia_ctk_configure.stdout"
+  when: nvidia_container_toolkit_install
+
+- name: "Nvidia | Install nvidia cuda"
+  apt:
+    name: "{{ item }}"
+    state: "present"
+    install_recommends: false
+    update_cache: true
+  loop:
+    - "{{ cuda_version | ternary('cuda-'+cuda_version, 'cuda') }}"
+  when: cuda_install
+
+- name: "Nvidia | Load kernel module"
+  modprobe:
+    name: "nvidia"
+    state: "present"
+    persistent: "present"
+  ignore_errors: true
+  register: nvidia_module_state
+
+- name: "Nvidia | Fail when module not started"
+  fail:
+    msg: "Node {{ inventory_hostname }} can`t load nvidia kernel module. Try to restart server"
+  when: nvidia_module_state.failed
+
+- name: "Nvidia | Re-enable apt daily timers after provisioning"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  ignore_errors: true
+
+- name: "Nvidia | Re-enable unattended-upgrades"
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    state: started
+  ignore_errors: true
