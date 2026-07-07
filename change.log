@@ -1,5 +1,39 @@
 # Change Log
 
+## 2026-07-07 (5) — Nexus-репозиторий только для jammy, остальные релизы через официальный NVIDIA-репозиторий
+
+### Fixed
+
+- Диагностика на реальном сервере (`vm-test2`, Ubuntu 24.04/noble): таск `Nexus | Add repositories keys | Add repository` падал с `404` на `dists/noble/main/binary-amd64/Packages.xz`. Через REST API Nexus (`/service/rest/v1/repositories/apt/hosted/nvidia-drivers-580`) подтверждено: репозиторий `nvidia-drivers-580` — apt (hosted) с `"distribution": "jammy"`. В Nexus 3 apt-hosted репозиторий обслуживает ровно один codename на весь репозиторий (это не multi-release apt-mirror), а сам репозиторий к тому же зеркалирует полный closure зависимостей под jammy (`gcc-11`, `dkms`, `build-essential` и т.п. jammy-версий) — смешивать это с пакетами других релизов в одном репозитории небезопасно (промежуточные гипотезы — плоский репозиторий `suites: "/"`, затем per-release словари `nexus_repo_urls`/`nexus_repo_signed_by_map` — рассмотрены и отклонены как избыточные).
+
+- Решение (по итогам обсуждения с пользователем): Nexus используется только для jammy (Ubuntu 22.04), для остальных релизов (20.04, 24.04) — официальный репозиторий NVIDIA (`nvidia_repo`/`nvidia_repo_key`, уже поддерживается ролью для любого релиза через `ansible_facts['distribution']`/`distribution_version`). `nvidia-drivers/tasks/main.yml` — таск `Nexus | Add repositories keys | Add repository`: `uris`/`signed_by` возвращены на одиночные `nexus_repo_url`/`nexus_repo_signed_by` (без per-release словарей), `when` расширен условием `and (ansible_facts['distribution_release'] == 'jammy')`, чтобы таск не пытался выполниться (и не падал) на других релизах — там установку репозитория берёт на себя уже существующий таск `Nvidia | Add repositories keys | Add repository` (официальный `nvidia_repo`).
+
+- `test-ntech-dev.yml`, `test-ntech-dev.docker.yml` — синхронизированы: `nexus_repo_url`/`nexus_repo_signed_by` — обычные строки (без словарей), `nvidia_repo`/`nvidia_repo_key` по-прежнему не переопределяются (дефолт роли сам вычисляет URL официального репозитория NVIDIA по факту дистрибутива хоста).
+
+### Known issues (не исправлено, не задача этого репозитория)
+
+- При диагностике в чате пользователь раскрыл пароль администратора Nexus и приватный GPG-ключ репозитория `nvidia-drivers-580` (jammy) — рекомендовано сменить пароль и считать ключ скомпрометированным (перевыпустить пару, если/когда потребуется переподписать репозиторий).
+
+## 2026-07-07 (4) — фикс signed_by для Nexus-репозитория + прогон molecule
+
+### Fixed
+
+- `nvidia-drivers/tasks/main.yml:28` — таск `Nexus | Add repositories keys | Add repository` брал `signed_by` из `nvidia_container_toolkit_signed_by` (ключ nvidia-container-toolkit) вместо `nexus_repo_signed_by`. Причина: копипаст-баг — переменная нужного репозитория игнорировалась, поэтому загруженный пользователем в Nexus raw ключ (`nexus-repo.gpg`) никогда не использовался, даже если `nexus_repo_signed_by` был указан правильно в инвентаре/плейбуке (как в `test-ntech-dev.yml`/`test-ntech-dev.docker.yml`). Исправлено на `nexus_repo_signed_by`.
+
+- `nvidia-drivers/defaults/main.yml:17` — дефолт `nexus_repo_signed_by` был равен `nexus_repo_url` (URL самого репозитория, а не ключа) — нерабочий заглушка-плейсхолдер. Заменён на плейсхолдер-URL до файла ключа (`http://nexus.internal/repository/apt-releases/apt-keys/nexus-repo.gpg`), по аналогии с реальным путём, который пользователь уже использует в своих плейбуках.
+
+### Verified (molecule converge, `nvidia-drivers/molecule/default`)
+
+- До падения на hardware-специфичных шагах все repo/key-таски отработали успешно на `ubuntu-2204`/`ubuntu-2404`: `python3-debian` установлен, `deb822_repository` для `nvidia_repo` — `changed`, пакет `nvidia-driver-530` реально скачан и установлен с `developer.download.nvidia.com`. Синтаксис (`molecule syntax`) — ok. Сама nexus-ветка (`nexus_repo_enabled: true` + `nexus_repo_signed_by`) этим прогоном не проверялась — в `molecule.yml` она намеренно выключена (`nexus_repo_enabled: false` в group_vars сценария), т.к. `nexus.internal` недоступен вне прод-окружения.
+
+### Known issues (обнаружено этим прогоном molecule, не исправлено)
+
+- `ubuntu-1804`, `ubuntu-2004` падают на `Gathering Facts`: Python 3.8 в образах несовместим с установленным на control-хосте `ansible-core` 2.21 (требует Python ≥3.9 на таргете). Не баг роли — несовместимость тестовых образов с текущей версией ansible-core.
+
+- `ubuntu-2204`, `ubuntu-2404` падают на таске `Nvidia | Install linux-modules` с `Read-only file system` при попытке распаковать `linux-image-*`/`linux-modules-*` в `/lib/modules/<kernel>`. Причина: `molecule.yml` монтирует `/lib/modules:/lib/modules:ro` (нужно для `modprobe`/`disable nouveau` на шаге раньше), но это же монтирование фундаментально блокирует установку НОВЫХ kernel-модульных пакетов — независимо от версии драйвера/ядра. Это конструктивное ограничение тестирования kernel/GPU-роли в Docker-контейнере (плюс отсутствие реального GPU для последующего `modprobe nvidia`), а не баг роли или сегодняшнего фикса.
+
+- `molecule destroy` не смог убить/удалить контейнеры `ubuntu-1804`/`ubuntu-2004`/`ubuntu-2204` (Docker API `tried to kill container, but did not receive an exit event`) — очищены вручную (`docker rm -f`). Похоже на ту же нестабильность Docker-демона, что уже отмечена в разделе (2) для `ubuntu-2004`.
+
 ## 2026-07-07 (3) — deprecated facts + tests/ для molecule verifier
 
 ### Fixed

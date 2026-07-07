@@ -7,14 +7,19 @@ nvidia_driver_specific_version: ""
 # Это требует зависимостей gcc и linux-headers
 nvidia_dkms_install: false
 
-## Внутренний Nexus-репозиторий с драйверами (основной источник пакетов)
+## Внутренний Nexus-репозиторий с драйверами (основной источник пакетов для Ubuntu 22.04/jammy)
+# Репозиторий apt (hosted) в Nexus обслуживает только один codename (distribution: jammy),
+# поэтому используется исключительно на jammy-хостах (см. tasks/main.yml); для остальных
+# релизов Ubuntu (20.04, 24.04) роль всегда идёт через официальный репозиторий NVIDIA
+# (nvidia_repo/nvidia_repo_key ниже) — многодистрибутивная схема (per-release словари) была
+# избыточной и отменена.
 # Включён по умолчанию, чтобы сохранить прежнее поведение роли; отключите,
 # если для конкретного окружения/хоста этот репозиторий не нужен или недоступен
 nexus_repo_enabled: true
-# Полный URL apt-репозитория в Nexus
+# Полный URL apt-репозитория в Nexus (только jammy)
 nexus_repo_url: "http://nexus.internal/repository/nvidia-drivers-580/"
-# Публичный GPG-ключ репозитория (armored)
-nexus_repo_signed_by: "http://nexus.internal/repository/nvidia-drivers-580/"
+# Публичный GPG-ключ репозитория (URL до файла ключа, например в raw-репозитории Nexus)
+nexus_repo_signed_by: "http://nexus.internal/repository/apt-releases/apt-keys/nexus-repo.gpg"
 
 ## Блок для установки cuda
 cuda_install: false

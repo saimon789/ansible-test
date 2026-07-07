@@ -25,8 +25,10 @@
     suites: "{{ ansible_facts['distribution_release'] }}"
     components:
       - main
-    signed_by: "{{ nvidia_container_toolkit_signed_by | trim }}"
-  when: nexus_repo_enabled
+    signed_by: "{{ nexus_repo_signed_by | trim }}"
+  # Nexus-репозиторий (apt hosted) публикует пакеты только под codename jammy — на остальных
+  # релизах Ubuntu драйвер ставится через официальный репозиторий NVIDIA (см. таск ниже).
+  when: nexus_repo_enabled and (ansible_facts['distribution_release'] == 'jammy')
 
 - name: "Nvidia | Add repositories keys | Add repository"
   deb822_repository:
