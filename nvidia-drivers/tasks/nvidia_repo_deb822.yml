@@ -1,3 +1,10 @@
+- name: "Nvidia | Ensure python3-debian is present (required by deb822_repository)"
+  apt:
+    name: python3-debian
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: "Nvidia | Add repository (deb822, Ubuntu >= 22.04)"
   deb822_repository:
     name: "nvidia-repository"

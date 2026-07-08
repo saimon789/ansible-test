@@ -11,17 +11,6 @@
     # т.к. deb822 sources не всегда надёжно поддерживается на этих релизах.
     nvidia_use_deb822_sources: "{{ ansible_facts['distribution_version'] is version('22.04', '>=') }}"
 
-- name: "Nvidia | Ensure python3-debian is present (required by deb822_repository)"
-  apt:
-    name: python3-debian
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-  when: >-
-    (nexus_repo_enabled and (ansible_facts['distribution_release'] == 'jammy')) or
-    (nvidia_use_deb822_sources and (nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)) or
-    (nvidia_use_deb822_sources and nvidia_container_toolkit_install)
-
 - name: "Nvidia | Ensure gnupg is present (required to dearmor apt keys on Ubuntu < 22.04)"
   apt:
     name: gnupg
