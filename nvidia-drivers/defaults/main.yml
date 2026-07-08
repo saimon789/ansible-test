@@ -45,3 +45,10 @@ nvidia_repo: >
   https://developer.download.nvidia.com/compute/cuda/repos/{{ ansible_facts['distribution'] | lower }}{{ ansible_facts['distribution_version'] | replace('.', '') }}/x86_64
 nvidia_repo_key: >
   https://developer.download.nvidia.com/compute/cuda/repos/{{ ansible_facts['distribution'] | lower }}{{ ansible_facts['distribution_version'] | replace('.', '') }}/x86_64/3bf863cc.pub
+
+## Пути до бинарных (dearmored) keyring-файлов, используемых ТОЛЬКО на Ubuntu < 22.04
+# (bionic/focal), где репозиторий добавляется классическим способом (get_url + gpg --dearmor +
+# apt_repository) вместо deb822_repository — apt требует бинарный .gpg, а не armored .asc ключ
+# в опции signed-by classic sources.list. На Ubuntu >= 22.04 не используются.
+nvidia_repo_keyring_path: "/etc/apt/keyrings/nvidia-cuda-repo.gpg"
+nvidia_container_toolkit_keyring_path: "/etc/apt/keyrings/nvidia-container-toolkit.gpg"

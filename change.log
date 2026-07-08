@@ -1,5 +1,18 @@
 # Change Log
 
+## 2026-07-08 — Ветвление способа добавления apt-репозиториев nvidia по версии Ubuntu
+
+### Added
+
+- `nvidia-drivers/tasks/main.yml` — репозитории `nvidia_repo` (официальный CUDA-репозиторий NVIDIA) и `nvidia-container-toolkit` теперь ветвятся по факту `ansible_facts['distribution_version']` (новый `set_fact`: `nvidia_use_deb822_sources`, `>= 22.04`). Причина: `ansible.builtin.deb822_repository` (deb822 `.sources`-формат) надёжно поддерживается только с Ubuntu 22.04 (jammy)/24.04 (noble); на 18.04/20.04 нужен классический механизм. На Ubuntu >= 22.04 поведение не изменилось (`deb822_repository`, ключ передаётся модулю как URL напрямую). На Ubuntu < 22.04 добавлены новые таски: `get_url` скачивает armored-ключ, `gpg --dearmor` (таск выполняется только когда `get_url` реально скачал новый файл — `register`/`when: ...changed`, чтобы не гонять dearmor на каждом прогоне) переводит его в бинарный keyring, `ansible.builtin.apt_repository` добавляет плоский (`suites: "/"`) репозиторий в `sources.list.d` с `signed-by=<путь до keyring>`. Каждый шаг — отдельный таск со своим `when` (не объединялись в `block:` — по явному запросу пользователя). Условие таска `Ensure python3-debian is present` сужено: пакет ставится только когда реально используется `deb822_repository` (раньше ставился для любого сценария с `nvidia_repo`/`nvidia_container_toolkit_install`, независимо от факта его использования); добавлен новый таск `Ensure gnupg is present`, нужный только для ветки `gpg --dearmor`.
+
+- `nvidia-drivers/defaults/main.yml` — новые переменные `nvidia_repo_keyring_path` (`/etc/apt/keyrings/nvidia-cuda-repo.gpg`) и `nvidia_container_toolkit_keyring_path` (`/etc/apt/keyrings/nvidia-container-toolkit.gpg`) — пути до бинарных keyring-файлов, используются только в ветке Ubuntu < 22.04.
+
+### Verified
+
+- `ansible-playbook test-nvidia.yml --syntax-check` — проходит (единственный вывод — ожидаемый deprecation-warning на `ansible.builtin.apt_repository`, модуль будет удалён в ansible-core 2.25).
+- Логика `get_url` → `gpg --dearmor` → `deb [signed-by=...] <url> /` вручную воспроизведена в чистых Docker-контейнерах `ubuntu:20.04` и `ubuntu:18.04` (реальные ключ/URL NVIDIA для соответствующего релиза): `apt-get update` проходит без ошибок подписи, `apt-cache policy nvidia-driver-530` показывает кандидатов из добавленного репозитория NVIDIA. Полный прогон роли через `molecule`/`ansible-playbook` на этих платформах не выполнялся — известное отдельное ограничение (`ansible-core` 2.21 требует Python >= 3.9 на таргете, чего нет в образах 18.04/20.04, см. запись 2026-07-07 (2)/(3)), не связано с этой правкой.
+
 ## 2026-07-07 (5) — Nexus-репозиторий только для jammy, остальные релизы через официальный NVIDIA-репозиторий
 
 ### Fixed
