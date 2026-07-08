@@ -1,0 +1,13 @@
+- name: "Nexus | Add repositories keys | Add repository"
+  deb822_repository:
+    name: "nexus-repo-{{ ansible_facts['distribution_release'] }}"
+    types: deb
+    uris: "{{ nexus_repo_url | trim }}"
+    state: present
+    mode: "0644"
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components:
+      - main
+    signed_by: "{{ nexus_repo_signed_by | trim }}"
+  # Nexus-репозиторий (apt hosted) публикует пакеты только под codename jammy — на остальных
+  # релизах Ubuntu драйвер ставится через официальный репозиторий NVIDIA (см. таск ниже).
