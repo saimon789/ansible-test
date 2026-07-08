@@ -1,0 +1,27 @@
+- name: "Nvidia | Ensure apt keyrings directory exists (Ubuntu < 22.04)"
+  ansible.builtin.file:
+    path: "/etc/apt/keyrings"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: "Nvidia | Download repository GPG key (Ubuntu < 22.04)"
+  ansible.builtin.get_url:
+    url: "{{ nvidia_repo_key | trim }}"
+    dest: "/etc/apt/keyrings/nvidia-cuda-repo.asc"
+    mode: "0644"
+  register: nvidia_repo_key_download
+
+- name: "Nvidia | Dearmor repository GPG key (Ubuntu < 22.04)"
+  ansible.builtin.command:
+    cmd: "gpg --batch --yes --dearmor -o {{ nvidia_repo_keyring_path }} /etc/apt/keyrings/nvidia-cuda-repo.asc"
+  changed_when: true
+  when: nvidia_repo_key_download.changed
+
+- name: "Nvidia | Add repository (classic sources.list, Ubuntu < 22.04)"
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by={{ nvidia_repo_keyring_path }}] {{ nvidia_repo | trim }} /"
+    filename: "nvidia-repository"
+    state: present
+    update_cache: true

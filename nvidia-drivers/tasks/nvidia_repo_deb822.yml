@@ -1,0 +1,9 @@
+- name: "Nvidia | Add repository (deb822, Ubuntu >= 22.04)"
+  deb822_repository:
+    name: "nvidia-repository"
+    types: deb
+    uris: "{{ nvidia_repo | trim }}"
+    suites: "/"
+    signed_by: "{{ nvidia_repo_key | trim }}"
+    state: "present"
+    mode: "0644"

@@ -48,51 +48,13 @@
   when: nexus_repo_enabled and (ansible_facts['distribution_release'] == 'jammy')
 
 - name: "Nvidia | Add repository (deb822, Ubuntu >= 22.04)"
-  deb822_repository:
-    name: "nvidia-repository"
-    types: deb
-    uris: "{{ nvidia_repo | trim }}"
-    suites: "/"
-    signed_by: "{{ nvidia_repo_key | trim }}"
-    state: "present"
-    mode: "0644"
+  ansible.builtin.include_tasks: nvidia_repo_deb822.yml
   when: >-
     nvidia_use_deb822_sources and
     (nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)
 
-- name: "Nvidia | Ensure apt keyrings directory exists (Ubuntu < 22.04)"
-  ansible.builtin.file:
-    path: "/etc/apt/keyrings"
-    state: directory
-    mode: "0755"
-    owner: root
-    group: root
-  when: >-
-    (not nvidia_use_deb822_sources) and
-    (nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)
-
-- name: "Nvidia | Download repository GPG key (Ubuntu < 22.04)"
-  ansible.builtin.get_url:
-    url: "{{ nvidia_repo_key | trim }}"
-    dest: "/etc/apt/keyrings/nvidia-cuda-repo.asc"
-    mode: "0644"
-  register: nvidia_repo_key_download
-  when: >-
-    (not nvidia_use_deb822_sources) and
-    (nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)
-
-- name: "Nvidia | Dearmor repository GPG key (Ubuntu < 22.04)"
-  ansible.builtin.command:
-    cmd: "gpg --batch --yes --dearmor -o {{ nvidia_repo_keyring_path }} /etc/apt/keyrings/nvidia-cuda-repo.asc"
-  changed_when: true
-  when: (not nvidia_use_deb822_sources) and nvidia_repo_key_download.changed
-
 - name: "Nvidia | Add repository (classic sources.list, Ubuntu < 22.04)"
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by={{ nvidia_repo_keyring_path }}] {{ nvidia_repo | trim }} /"
-    filename: "nvidia-repository"
-    state: present
-    update_cache: true
+  ansible.builtin.include_tasks: nvidia_repo_classic.yml
   when: >-
     (not nvidia_use_deb822_sources) and
     (nvidia_repo | trim | length > 0) and (nvidia_repo_key | trim | length > 0)
@@ -109,50 +71,12 @@
     group: "root"
   when: nvidia_repo | trim | length > 0
 
-- name: "Nvidia Container Toolkit | Add apt repository with key (deb822, Ubuntu >= 22.04)"
-  deb822_repository:
-    name: "nvidia-container-toolkit"
-    types: deb
-    uris: "{{ nvidia_container_toolkit_repo_url | trim }}"
-    suites: "/"
-    signed_by: "{{ nvidia_container_toolkit_signed_by | trim }}"
-    state: "present"
-    mode: "0644"
+- name: "Nvidia Container Toolkit | Add apt repository (deb822, Ubuntu >= 22.04)"
+  ansible.builtin.include_tasks: nvidia_container_toolkit_repo_deb822.yml
   when: nvidia_container_toolkit_install and nvidia_use_deb822_sources
-  register: nvidia_ctk_repo
 
-- name: "Nvidia Container Toolkit | Ensure apt keyrings directory exists (Ubuntu < 22.04)"
-  ansible.builtin.file:
-    path: "/etc/apt/keyrings"
-    state: directory
-    mode: "0755"
-    owner: root
-    group: root
-  when: nvidia_container_toolkit_install and not nvidia_use_deb822_sources
-
-- name: "Nvidia Container Toolkit | Download repository GPG key (Ubuntu < 22.04)"
-  ansible.builtin.get_url:
-    url: "{{ nvidia_container_toolkit_signed_by | trim }}"
-    dest: "/etc/apt/keyrings/nvidia-container-toolkit.asc"
-    mode: "0644"
-  register: nvidia_ctk_key_download
-  when: nvidia_container_toolkit_install and not nvidia_use_deb822_sources
-
-- name: "Nvidia Container Toolkit | Dearmor repository GPG key (Ubuntu < 22.04)"
-  ansible.builtin.command:
-    cmd: "gpg --batch --yes --dearmor -o {{ nvidia_container_toolkit_keyring_path }} /etc/apt/keyrings/nvidia-container-toolkit.asc"
-  changed_when: true
-  when: >-
-    nvidia_container_toolkit_install and
-    (not nvidia_use_deb822_sources) and nvidia_ctk_key_download.changed
-
-- name: "Nvidia Container Toolkit | Add apt repository with key (classic sources.list, Ubuntu < 22.04)"
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by={{ nvidia_container_toolkit_keyring_path }}] {{ nvidia_container_toolkit_repo_url | trim }} /"
-    filename: "nvidia-container-toolkit"
-    state: present
-    update_cache: true
-  register: nvidia_ctk_repo_classic
+- name: "Nvidia Container Toolkit | Add apt repository (classic sources.list, Ubuntu < 22.04)"
+  ansible.builtin.include_tasks: nvidia_container_toolkit_repo_classic.yml
   when: nvidia_container_toolkit_install and not nvidia_use_deb822_sources
 
 - name: "Nvidia | Blacklist unattented upgrade"
